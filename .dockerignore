@@ -1,0 +1,6 @@
+.travis.yml
+.DS_Store
+*.md
+*.wheel
+release
+
