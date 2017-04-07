@@ -11,11 +11,7 @@ popd > /dev/null
 PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
 
 function sed_hyphen_i() {
-  if is_macos; then
-    sed -i '' "$@"
-  else
     sed -i "$@"
-  fi
 }
 
 function write_to_bazelrc() {
