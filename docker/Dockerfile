@@ -2,9 +2,8 @@ FROM nvidia/cuda:8.0-cudnn6-devel
 
 MAINTAINER Sunkeun Choi <sunkeun.choi@gmail.com>
 
-# Make sure CUDNN is detected
-ENV LD_LIBRARY_PATH /usr/local/cuda/lib64/:$LD_LIBRARY_PATH
-RUN ln -s /usr/local/cuda/lib64/libcudnn.so.6 /usr/local/cuda/lib64/libcudnn.so
+# Set term
+ENV TERM=xterm-256color
 
 # Install Build Dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libzmq3-dev \
         pkg-config \
         python3-dev \
+        python-dev \
         rsync \
         software-properties-common \
         unzip \
@@ -26,27 +26,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Conda
-#ADD https://repo.continuum.io/miniconda/Miniconda3-4.2.12-Linux-x86_64.sh tmp/Miniconda3-4.2.12-Linux-x86_64.sh
-ADD https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh tmp/Miniconda3-latest-Linux-x86_64.sh
-RUN bash tmp/Miniconda3-latest-Linux-x86_64.sh -b
-ENV PATH $PATH:/root/miniconda3/bin/
+RUN curl -fSsL -O https://bootstrap.pypa.io/get-pip.py && \
+    python3 get-pip.py && \
+    rm get-pip.py
 
-RUN conda config --add channels https://conda.anaconda.org/menpo
-RUN conda config --add channels conda-forge
-RUN conda install \
-        python \
-        numpy \
-        matplotlib \
+RUN pip --no-cache-dir install \
+        ipykernel \
         jupyter \
+        matplotlib \
+        numpy \
         scipy \
-        h5py \
+        sklearn \
         pandas \
-        pip \
-        --debug -v -v
-
-# cleanup tarballs and downloaded package files
-RUN conda clean -tp -y
+        && \
+    python3 -m ipykernel.kernelspec
 
 # Install JDK for Bazel
 RUN add-apt-repository -y ppa:openjdk-r/ppa && \
@@ -78,15 +71,36 @@ RUN mkdir /bazel && \
     rm -f /bazel/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh
 
 # Download and build TensorFlow.
-RUN git clone https://github.com/tensorflow/tensorflow.git && \
+RUN git clone --progress --verbose https://github.com/tensorflow/tensorflow.git && \
     cd tensorflow && \
     git checkout r1.1
 
 # OUTPUT: Build cache
 VOLUME /ouput
 
-WORKDIR tensorflow
-# Build
+# Make sure CUDNN is detected
+ENV LD_LIBRARY_PATH /usr/local/cuda/lib64/:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
+
+# GPU Environment Setup
+ENV TF_NEED_CUDA 1
+ENV GCC_HOST_COMPILER_PATH /usr/bin/gcc
+ENV CUDA_TOOLKIT_PATH /usr/local/cuda
+ENV TF_CUDA_VERSION 8.0
+ENV TF_CUDNN_VERSION 6.0
+ENV CUDNN_INSTALL_PATH /usr/local/cuda/lib64
+ENV TF_CUDA_COMPUTE_CAPABILITIES 3.7
+
+# Common Environment Setup
+ENV TF_BUILD_CONTAINER_TYPE GPU
+ENV TF_BUILD_OPTIONS OPT
+ENV TF_BUILD_DISABLE_GCP 1
+ENV TF_BUILD_ENABLE_XLA 1
+ENV TF_BUILD_PYTHON_VERSION PYTHON3
+ENV TF_BUILD_IS_OPT OPT
+ENV TF_BUILD_IS_PIP PIP
+
+ENTRYPOINT ["/bin/bash"]
+
 RUN bazel build -c opt --copt=-mavx --copt=-mavx2 --copt=-msse4.1 --copt=-msse4.2 --copt=-mfma --config=cuda -k //tensorflow/tools/pip_package:build_pip_package
 RUN bazel-bin/tensorflow/tools/pip_package/build_pip_package /output
-
